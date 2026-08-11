@@ -112,6 +112,21 @@ it('serves an attachment that belongs to the mail', function () {
     expect($response->streamedContent())->toBe('INVOICE BODY');
 });
 
+it('renders a download link from an attachment uuid', function () {
+    Storage::fake('local');
+
+    $mail = Mail::factory()->create();
+    $attachment = attachmentFor($mail);
+
+    filament()->setCurrentPanel('admin');
+
+    $html = view('mails::mails.download', [
+        'getState' => fn () => $attachment->uuid,
+    ])->render();
+
+    expect($html)->toContain(downloadUrl($mail, $attachment));
+});
+
 it('returns 404 for an unknown attachment', function () {
     Storage::fake('local');
 
@@ -137,13 +152,35 @@ it('returns 404 for an unknown mail preview', function () {
 });
 
 it('sends hardening headers with the preview', function () {
-    $mail = Mail::factory()->create(['html' => '<p>secret</p>']);
+    $mail = Mail::factory()->create(['html' => '<script>window.emailScriptRan = true</script><p>secret</p>']);
 
     MailsPlugin::get()->canManageMails(true);
 
-    $this->actingAs(mailUser())
+    $response = $this->actingAs(mailUser())
         ->get(previewUrl($mail))
         ->assertOk()
-        ->assertHeader('X-Content-Type-Options', 'nosniff')
-        ->assertHeader('Content-Security-Policy', "frame-ancestors 'self'");
+        ->assertHeader('X-Content-Type-Options', 'nosniff');
+
+    $csp = $response->headers->get('Content-Security-Policy');
+
+    expect($csp)->toMatch('/frame-ancestors \'self\'; sandbox allow-scripts; script-src \'nonce-[^\']+\'/');
+
+    preg_match("/script-src 'nonce-([^']+)'/", $csp, $matches);
+
+    expect($response->getContent())
+        ->toContain('<script>window.emailScriptRan = true</script>')
+        ->toContain('<script nonce="' . $matches[1] . '">')
+        ->toContain('postMailsPreviewHeight');
+});
+
+it('sandboxes the preview iframe', function () {
+    $mail = Mail::factory()->create();
+
+    filament()->setCurrentPanel('admin');
+
+    $html = view('mails::mails.preview', ['mail' => $mail])->render();
+
+    expect($html)
+        ->toMatch('/<iframe[^>]+sandbox="allow-scripts"/')
+        ->toContain('mails-iframe-resize');
 });
