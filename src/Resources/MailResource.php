@@ -229,6 +229,9 @@ class MailResource extends Resource
                                                         EventType::SOFT_BOUNCED => 'danger',
                                                         EventType::HARD_BOUNCED => 'danger',
                                                         EventType::COMPLAINED => 'warning',
+                                                        EventType::FAILED => 'danger',
+                                                        EventType::SCHEDULED => 'info',
+                                                        EventType::SUPPRESSED => 'danger',
                                                         EventType::UNSUBSCRIBED => 'danger',
                                                         EventType::ACCEPTED => 'success',
                                                         default => 'gray',
@@ -447,6 +450,11 @@ class MailResource extends Resource
             ])
             ->recordActions([
                 ViewAction::make()
+                    // Infolist entries read directly from the record, so keeping a
+                    // second copy of every attribute in Livewire state is unnecessary.
+                    // In particular, posting email HTML back when the modal closes can
+                    // trigger upstream request-body security rules.
+                    ->mutateRecordDataUsing(fn (): array => [])
                     // ->url(null)
                     ->modal()
                     ->slideOver()
